@@ -1,9 +1,9 @@
-console.log("Hello from the framework!");
+import { h } from "./core/vdom/h";
+import { VNode } from "./types/vdom.types";
 
-export function createElement(tag: string, props: Record<string, unknown>, ...children: unknown[]) {
-  return { tag, props, children };
+
+export function App(): VNode {
+  return h('div', { class: 'app' }, ['My first app']);
 }
 
-// Example usage
-const app = createElement("div", { id: "app" }, "Hello, Framework!");
-console.log(app);
+console.log(App());
