@@ -10,7 +10,6 @@ export interface DefaultVNode {
     props?: Record<string, unknown>;
     children?: VNode[];
     element?: HTMLElement | Text | null;
-    key?: unknown;
 }
 
 export interface VNodeText extends DefaultVNode {

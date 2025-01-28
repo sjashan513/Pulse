@@ -4,7 +4,7 @@ import { mountDOM } from "./mount-dom";
 
 
 
-function areNodesEqual(oldNode: VNode, newNode: VNode): boolean {
+export function areNodesEqual(oldNode: VNode, newNode: VNode): boolean {
     if (oldNode.type !== newNode.type) return false;
 
     // for text nodes the value must be same:
@@ -54,58 +54,53 @@ function patchChildren(oldNode: VNode, newNode: VNode) {
     const newChildren = newNode.children || [];
     const parenntEl = oldNode.element as HTMLElement;
 
+
     const oldKeyMap: Map<unknown, VNode> = new Map();
+    const usedOldChildren: boolean[] = new Array(oldChildren.length).fill(false);
 
     // create a map of keys
     oldChildren.forEach((child) => {
-        if (child.key) oldKeyMap.set(child.key, child);
+        if (child.props?.key) oldKeyMap.set(child.props.key, child);
     });
 
-    // update the children
+    // iterate through the new children to reconcile
     newChildren.forEach((newChild) => {
-        if (newChild.key != null) {
-            //if the oldChild exists and has the same key, update the oldChild
-            const oldChild = oldKeyMap.get(newChild.key);
+        const newKey = newChild.props?.key;
+        let oldChild: VNode | undefined;
+        if (newKey) {
+            //
+            oldChild = oldKeyMap.get(newKey);
             if (oldChild) {
-                updateDOM(oldChild, newChild, parenntEl);
-                oldKeyMap.delete(newChild.key);
-            } else {
-                // if the oldChild does not exist, mount the newChild
-                mountDOM(newChild, parenntEl);
+                oldKeyMap.delete(newKey);
+                usedOldChildren[oldChildren.indexOf(oldChild)] = true;
             }
         } else {
-            // handle the unkeyed children normally as a new child
+            for (let oldIndex = 0; oldIndex < oldChildren.length; oldIndex++) {
+                if (!usedOldChildren[oldIndex] && !oldChildren[oldIndex].props?.key) {
+                    const candidate = oldChildren[oldIndex];
+                    if (areNodesEqual(candidate, newChild)) {
+                        oldChild = candidate;
+                        usedOldChildren[oldIndex] = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (oldChild) {
+            // if the oldChild exists, update the oldChild
+            updateDOM(oldChild, newChild, parenntEl);
+        } else {
+            // if the oldChild does not exist, mount the newChild
             mountDOM(newChild, parenntEl);
         }
     });
 
-    oldKeyMap.forEach((oldChild) => { destroyDOM(oldChild) });
-
-
-    // handle the remaining unkeyed children order-base
-    const commonLength = Math.min(oldChildren.length, newChildren.length);
-    // update the children
-    for (let i = 0; i < commonLength; i++) {
-        if (!newChildren[i].key) {
-            updateDOM(oldChildren[i], newChildren[i], parenntEl);
+    usedOldChildren.forEach((used, index) => {
+        if (!used) {
+            // destroy the unused children
+            destroyDOM(oldChildren[index]);
         }
-    }
-
-    // Add new children if needed
-    for (let i = commonLength; i < newChildren.length; i++) {
-        // The new child is appended to the parent element in the function mountDOM
-        if (!newChildren[i].key) {
-            mountDOM(newChildren[i], parenntEl);
-        }
-    }
-
-    // remove the extra children
-    for (let i = commonLength; i < oldChildren.length; i++) {
-        if (!oldChildren[i].key) {
-            destroyDOM(oldChildren[i]);
-        }
-    }
-
+    });
 }
 
 
