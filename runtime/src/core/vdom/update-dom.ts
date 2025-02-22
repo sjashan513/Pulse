@@ -1,4 +1,4 @@
-import { DOM_TYPES, VNode, VNodeElement, VNodeText } from "../../types/vdom.types";
+import { DOM_TYPES, VNode, VNodeElement, VNodeText } from "./types/vdom.types";
 import { destroyDOM } from "./destroy-dom";
 import { mountDOM } from "./mount-dom";
 
@@ -60,7 +60,7 @@ function patchChildren(oldNode: VNode, newNode: VNode) {
 
     // create a map of keys
     oldChildren.forEach((child) => {
-        if (child.props?.key) oldKeyMap.set(child.props.key, child);
+        if (child && child.props?.key) oldKeyMap.set(child.props.key, child);
     });
 
     // iterate through the new children to reconcile

@@ -1,5 +1,5 @@
 import { hString } from "../core/vdom/h";
-import { VNode } from "../types/vdom.types";
+import { VNode } from "../core/vdom/types/vdom.types";
 
 export function withoutNull<T>(childrens: (T | null | undefined)[]): T[] {
     return childrens.filter((child): child is T => child != null); // Remove null or undefined children

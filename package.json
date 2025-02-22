@@ -29,5 +29,8 @@
     "tsx": "^4.19.2",
     "typescript-eslint": "^8.21.0",
     "vitest": "^3.0.4"
-  }
+  },
+  "files": [
+    "runtime/src/core/reactivity/api.ts"
+  ]
 }

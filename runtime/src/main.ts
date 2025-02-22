@@ -1,32 +1,36 @@
-import { h } from "./core/vdom/h";
-import { mountDOM } from "./core/vdom/mount-dom";
-import { updateDOM } from "./core/vdom/update-dom";
+import { computed, signal } from "./core/reactivity/index";
+
+// Create base signals.
+const a = signal(1);
+const b = signal(2);
+
+// Create a computed signal that multiplies signals 'a' and 'b'.
+const comp = computed(() => {
+  return a.get() * b.get();
+});
+
+const nestedComp = computed(() => {
+  return comp.get() * 2;
+})
+document.getElementById('btn')?.addEventListener('click', () => {
+  console.log('Increase the value', a.get(), ' + 1');
+  a.set(a.get() + 1);
+  console.log('Updated computed', comp.get());
+  console.log('Updated nested computed', nestedComp.get());
+})
+console.log('computed', comp.get());
+console.log('nested computed', nestedComp.get());
 
 
-const app = document.getElementById('app');
 
-// Initial Virtual DOM
-const oldVDOM = h('div', { id: 'container' }, [
-  h('h1', {}, ['Hello, World!']),
-  h('ul', {}, [
-    h('li', { key: 1 }, ['Apple']),
-    h('li', { key: 2 }, ['Banana']),
-  ]),
-]);
+// Update 'a' after 1 second to trigger re-evaluation.
+// setTimeout(() => {
 
-// New Virtual DOM
-const newVDOM = h('div', { id: 'container' }, [
-  h('h1', {}, ['Hello, Virtual DOM!']),
-  h('ul', {}, [
-    h('li', { key: 2 }, ['Banana']),
-    h('li', { key: 3 }, ['Cherry']),
-  ]),
-]);
-console.log(oldVDOM)
+//   console.log('Updating signal "a" to 4');
+//   a.set(4);
+  // console.log('Updated computed', comp.get());
+  // console.log('Updated nested computed', nestedComp.get());
 
-// Mount the initial Virtual DOM
-if (app) mountDOM(oldVDOM, app);
-// After 2 seconds, update the DOM
-setTimeout(() => {
-  if (app) updateDOM(oldVDOM, newVDOM, app);
-}, 2000);
+// }, 1000);
+
+

@@ -1,4 +1,4 @@
-import { DOM_TYPES, VNode, VNodeElement, VNodeFragment, VNodeText } from "../../types/vdom.types";
+import { DOM_TYPES, VNode, VNodeElement, VNodeFragment, VNodeText } from "./types/vdom.types";
 
 function removeTextNode(node: VNodeText): void {
     node.element?.remove();
