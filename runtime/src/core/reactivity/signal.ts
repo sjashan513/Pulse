@@ -28,6 +28,7 @@ export class Signal<T> implements Reactive<T>{
     }
 
     subscribe(observer: SignalObserver): void {
+        
         this._observers.add(new WeakRef(observer));
     }
 

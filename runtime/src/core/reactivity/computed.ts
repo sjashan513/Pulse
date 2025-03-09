@@ -40,6 +40,7 @@ export class ComputedSignal<T> implements SignalObserver, Reactive<T> {
         }
     }
     trackDependency(dep: Reactive<unknown>): void {
+        if(this._dependencies.has(dep)) return;
         this._dependencies.add(dep);
         dep.subscribe(this);
     }
