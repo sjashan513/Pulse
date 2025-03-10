@@ -1,5 +1,5 @@
 import { Reactive, SignalObserver } from "./internals/types";
-import { globalObserversStack } from "./internals/globalObserversStack";
+import { batcher, globalObserversStack } from "./internals/globalVariables";
 
 export class DeepSignal<T extends object> implements Reactive<T> {
   private _value: T;
@@ -50,7 +50,7 @@ export class DeepSignal<T extends object> implements Reactive<T> {
     observersToNotify.forEach((ref) => {
       const observer = ref.deref();
       if (observer) {
-        observer.notify();
+        batcher.scheduleObserver(observer);
       } else {
         this._observers.delete(ref);
       }

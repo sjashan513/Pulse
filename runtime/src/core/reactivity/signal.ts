@@ -1,4 +1,4 @@
-import { globalObserversStack } from "./internals/globalObserversStack";
+import { globalObserversStack, batcher } from "./internals/globalVariables";
 import { Reactive, SignalObserver } from "./internals/types";
 
 
@@ -47,7 +47,7 @@ export class Signal<T> implements Reactive<T>{
         observersToNotify.forEach(ref => {
             const observer = ref.deref();
             if(observer){
-                observer.notify();
+                batcher.scheduleObserver(observer);
             }else{
                 this._observers.delete(ref);
             }

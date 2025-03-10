@@ -1,4 +1,4 @@
-import { globalObserversStack } from "./internals/globalObserversStack";
+import { globalObserversStack } from "./internals/globalVariables";
 import { EffectFn, Reactive, SignalObserver } from "./internals/types";
 
 

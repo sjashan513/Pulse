@@ -1,4 +1,4 @@
-import { globalObserversStack } from "./internals/globalObserversStack";
+import { globalObserversStack } from "./internals/globalVariables";
 import { Reactive, SignalObserver } from "./internals/types";
 
 export class ComputedSignal<T> implements SignalObserver, Reactive<T> {
