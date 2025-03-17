@@ -1,124 +1,78 @@
-import { batch, deepSignal, effect, signal } from './core/reactivity/api';
+/************************************************************************
+ * 1) Large Test String
+ ************************************************************************/
+const performanceTestString = `
+<div>
+        <span>Count: count()</span>
+        <!-- long comment with text and 
+        newlines -->
+        <button @click="increment" value="test value">Add</button>
+        <p>Text
+        with
+        tabs		and
+        newlines</p>
+        <!-- short -->
+        <div>Inner<div>Nested</div></div>
+    </div>
+`;
 
-// // Create a deep reactive state with nested properties.
-// const state = deepSignal({
-//   user: {
-//     name: 'Alice',
-//     age: 30
-//   }
-// });
+console.log("Benchmarking with test string length:", performanceTestString.length);
 
-// // Register an effect that reacts to changes on nested properties.
-// effect(() => {
-//   // Accessing the nested property triggers dependency tracking.
-//   console.log(`User name is: ${state().user.name}`);
-// });
+/************************************************************************
+ * 2) IMPORTS (WASM + your TS parser)
+ ************************************************************************/
+// Import your WASM module (compiled with --bind)
+import createModule from './core/compiler/tokenizer.mjs';
+import { parseHtml } from './core/reactivity';
+import { Tokenizer } from './core/reactivity/internals/tokenizer';
 
-// // Initially, the effect logs: "User name is: Alice"
+// Assume you have a TS/JS parser function like:
+//    function tsParser(input: string): ReturnType<any> { ... }
+// ^ Adjust the path/function name as needed.
 
-// // Update a nested property.
-// // Because of your proxy's set handler, this change is detected and the effect re-runs.
-// state().user.name = 'Bob';
+/************************************************************************
+ * 3) Configure the number of runs
+ ************************************************************************/
+const ITERATIONS = 1000000; // Example: parse the string 1000 times
 
-// // Expected log output: "User name is: Bob"
+/************************************************************************
+ * 4) Benchmark: WASM tokenizer
+ ************************************************************************/
+async function benchmarkWasmTokenizer() {
+  // Load/initialize the WASM module
+  const wasmModule = await createModule();
 
-// // You can also replace an entire nested object.
-// state().user = { name: 'Charlie', age: 35 };
-// // The effect should run again and log: "User name is: Charlie"
+  const start = performance.now();
+  for (let i = 0; i < ITERATIONS; i++) {
+    wasmModule.tokenize(performanceTestString);
+  }
+  const end = performance.now();
 
-
-
-
-// let stateSignal = signal('Alice');
-// effect(()=>{
-//   console.log(`User name (Signal): ${stateSignal()}`);
-// })
-
-// stateSignal.set('Bob');
-// stateSignal.set('Charlie');
-
-function testBatching() {
-  const countA = signal(0);
-  const countB = signal(0);
-
-  effect(() => {
-    console.log("Effect triggered");
-    console.log(`Count A: ${countA()}`);
-    console.log(`Count B: ${countB()}`);
-  });
-
-  console.log("---- Initial Run ----");
-
-  // Implicit microtask batching:
-  // Both these updates happen synchronously, but the effect runs only once
-  countA.set(1);
-  countB.set(2);
-
-  // After a microtask, you should see:
-  // "Effect triggered", "Count A: 1", "Count B: 2"
-
-  // Explicit batching:
-  // The effect won't run until after the batch finishes
-  batch(() => {
-    countA.set(10);
-    countB.set(20);
-  });
-
-  // After the batch completes, you should see:
-  // "Effect triggered", "Count A: 10", "Count B: 20"
-}
-function testDeepSignal() {
-  const state = deepSignal({
-    user: {
-      name: "Alice",
-      age: 30,
-      address: {
-        city: "New York",
-        zip: "10001"
-      }
-    },
-    settings: {
-      theme: "light",
-      notifications: true,
-    }
-  });
-
-  effect(() => {
-    console.log("Deep effect triggered:");
-    console.log(`User: ${state().user.name}, Age: ${state().user.age}`);
-    console.log(`City: ${state().user.address.city}, ZIP: ${state().user.address.zip}`);
-    console.log(`Theme: ${state().settings.theme}, Notifications: ${state().settings.notifications}`);
-  });
-
-  console.log("---- Initial effect run ----");
-
-  // Implicit microtask batching: multiple nested updates in one tick
-  state().user.name = "Bob";
-  state().user.age = 35;
-  state().user.address.city = "Los Angeles";
-  state().user.address.zip = "90001";
-  state().settings.theme = "dark";
-
-  // After the microtask flush, the effect should run once with:
-  // User: Bob, Age: 35, City: Los Angeles, ZIP: 90001, Theme: dark, Notifications: true
-
-  // Explicit batching: group a set of nested changes
-  batch(() => {
-    state().user.name = "Charlie";
-    state().user.age = 40;
-    state().user.address.city = "Chicago";
-    state().user.address.zip = "60601";
-    state().settings.notifications = false;
-  });
-  // When the batch finishes, the effect should run once with:
-  // User: Charlie, Age: 40, City: Chicago, ZIP: 60601, Theme: dark, Notifications: false
-
-  // Further update outside of any batch
-  console.log('---');
-  state().settings.theme = "blue";
-  state().settings.notifications = true;
-  // This update should trigger the effect once more, reflecting the new theme.
+  console.log(`[WASM Tokenizer] ${ITERATIONS} iterations took ${end - start} ms`);
 }
 
-testDeepSignal();
-// testBatching();
+/************************************************************************
+ * 5) Benchmark: TS parser
+ ************************************************************************/
+function benchmarkTsParser() {
+  const start = performance.now();
+  for (let i = 0; i < ITERATIONS; i++) {
+    const tokenizer = new Tokenizer(performanceTestString);
+    const tokens = tokenizer.tokenize();
+  }
+  const end = performance.now();
+
+  console.log(`[TS Parser] ${ITERATIONS} iterations took ${end - start} ms`);
+}
+
+/************************************************************************
+ * 6) Run Both Benchmarks
+ ************************************************************************/
+async function runAllBenchmarks() {
+  await benchmarkWasmTokenizer();
+  benchmarkTsParser();
+}
+
+runAllBenchmarks().catch(error => {
+  console.error("Error during benchmarking:", error);
+});
