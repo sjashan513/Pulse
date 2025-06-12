@@ -13,7 +13,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "parse5": "^7.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
