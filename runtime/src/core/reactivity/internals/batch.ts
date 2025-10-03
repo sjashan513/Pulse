@@ -13,8 +13,9 @@ export class Batcher {
     this.flushScheduled = false;
     const toNotify = Array.from(this.batchQueue);
     this.batchQueue.clear();
+    toNotify.sort((a, b) => a.level < b.level ? -1 : 1);
     for (const observer of toNotify) {
-      observer.notify();
+      observer.run();
     }
     this.inFlush = false;
   }

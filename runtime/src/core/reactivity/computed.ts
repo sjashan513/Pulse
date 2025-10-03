@@ -1,46 +1,49 @@
-import { globalObserversStack } from "./internals/globalVariables";
+import { batcher, globalObserversStack } from "./internals/globalVariables";
 import { Reactive, SignalObserver } from "./internals/types";
 
 export class ComputedSignal<T> implements SignalObserver, Reactive<T> {
-    
-    private readonly _computedFn:() => T;
-    private _isDirty:boolean = true;
-    private _cachedValue!:T;
-    private  _observers = new Set<WeakRef<SignalObserver>>();
+
+    private readonly _computedFn: () => T;
+    private _isDirty: boolean = true;
+    private _cachedValue!: T;
+    private _observers = new Set<WeakRef<SignalObserver>>();
     private _dependencies = new Set<Reactive<unknown>>();
 
-    constructor(computedFn:() => T){
+    public level: number = 0;
+    constructor(computedFn: () => T) {
         this._computedFn = computedFn;
     }
-    
 
-    get value():T{
-        if(this._isDirty){
+
+    get value(): T {
+        if (this._isDirty) {
             this._cachedValue = this.recompute();
             this._isDirty = false;
         }
         const currentObserver = globalObserversStack.peek();
-        if(currentObserver){
+        if (currentObserver) {
             currentObserver.trackDependency(this);
         }
         return this._cachedValue;
     }
-    
 
-    markDirty():void{
-        if(!this._isDirty){
+
+    markDirty(): void {
+        if (!this._isDirty) {
             this._isDirty = true;
         }
     }
 
     notify(): void {
-        if(!this._isDirty){
+        if (!this._isDirty) {
             this._isDirty = true;
             this.notifyObservers();
         }
     }
+    run(): void { }
+
     trackDependency(dep: Reactive<unknown>): void {
-        if(this._dependencies.has(dep)) return;
+        if (this._dependencies.has(dep)) return;
         this._dependencies.add(dep);
         dep.subscribe(this);
     }
@@ -51,35 +54,51 @@ export class ComputedSignal<T> implements SignalObserver, Reactive<T> {
     unsubscribe(observer: SignalObserver): void {
         for (const ref of this._observers) {
             if (ref.deref() === observer) {
-              this._observers.delete(ref);
-              break;
+                this._observers.delete(ref);
+                break;
             }
-          }
+        }
     }
 
-    private recompute():T{
+    private recompute(): T {
         this._cleanup();
         globalObserversStack.push(this);
-        let result:T;
-        try{
+        let result: T;
+        try {
             result = this._computedFn();
-        }finally{
+        } finally {
             globalObserversStack.pop();
         }
+        this._recalculateLevel();
         return result;
     }
     private notifyObservers(): void {
         for (const ref of Array.from(this._observers)) {
-          const observer = ref.deref();
-          if (observer) {
-            observer.notify();
-          } else {
-            this._observers.delete(ref);
-          }
+            const observer = ref.deref();
+            if (observer) {
+                batcher.scheduleObserver(observer);
+            } else {
+                this._observers.delete(ref);
+            }
         }
-      }
-    private _cleanup():void{
+    }
+    private _cleanup(): void {
         this._dependencies.forEach(dep => dep.unsubscribe(this));
         this._dependencies.clear();
+    }
+
+    private _recalculateLevel() {
+        if (this._dependencies.size === 0) {
+            this.level = 1;
+            return;
+        }
+        let maxLevel = 0;
+        this._dependencies.forEach(dep => {
+            if (dep.level > maxLevel) {
+                maxLevel = dep.level;
+            }
+        });
+        this.level = maxLevel + 1;
+
     }
 }
