@@ -1,4 +1,4 @@
-import { batcher, globalObserversStack } from "./internals/globalVariables";
+import { batcher, globalContextStack, globalObserversStack } from "./internals/globalVariables";
 import { EffectFn, Reactive, SignalObserver } from "./internals/types";
 
 
@@ -10,6 +10,10 @@ export class Effect implements SignalObserver {
 
     constructor(fn: EffectFn) {
         this._fn = fn;
+        const currentScope = globalContextStack.peek();
+        if (currentScope) {
+            currentScope.addPrimitive(this);
+        }
     }
 
     run(): void {

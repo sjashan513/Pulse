@@ -72,4 +72,20 @@ export class Stack<T> {
     public clear(): void {
         this.stackArr = [];
     }
+
+    /**
+     * Replaces the current stack contents with a new array of items.
+     * @param items - The new items for the stack.
+     */
+    public replace(items: T[]): void {
+        this.stackArr = items;
+    }
+
+    /**
+     * Returns a shallow copy of the stack's underlying array.
+     * @returns A new array containing all elements in the stack.
+     */
+    public getItems(): T[] {
+        return [...this.stackArr];
+    }
 }

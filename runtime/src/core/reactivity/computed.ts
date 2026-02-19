@@ -1,4 +1,4 @@
-import { batcher, globalObserversStack } from "./internals/globalVariables";
+import { batcher, globalContextStack, globalObserversStack } from "./internals/globalVariables";
 import { Reactive, SignalObserver } from "./internals/types";
 
 export class ComputedSignal<T> implements SignalObserver, Reactive<T> {
@@ -9,9 +9,14 @@ export class ComputedSignal<T> implements SignalObserver, Reactive<T> {
     private _observers = new Set<WeakRef<SignalObserver>>();
     private _dependencies = new Set<Reactive<unknown>>();
 
+
     public level: number = 0;
     constructor(computedFn: () => T) {
         this._computedFn = computedFn;
+        const currentScope = globalContextStack.peek();
+        if (currentScope) {
+            currentScope.addPrimitive(this);
+        }
     }
 
 
@@ -41,6 +46,11 @@ export class ComputedSignal<T> implements SignalObserver, Reactive<T> {
         }
     }
     run(): void { }
+
+    dispose(): void {
+        this._cleanup();
+        this._observers.clear();
+    }
 
     trackDependency(dep: Reactive<unknown>): void {
         if (this._dependencies.has(dep)) return;

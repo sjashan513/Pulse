@@ -3,7 +3,6 @@ import { ComputedSignal } from "./computed";
 import { Effect } from "./effect";
 import type { EffectFn } from "./internals/types";
 import { DeepSignal } from "./deepSignal";
-import { Batcher } from "./internals/batch";
 import { batcher } from "./internals/globalVariables";
 
 interface ISignal<T> {
@@ -19,6 +18,11 @@ interface IDeepSignal<T extends object> {
   (): T;
   set: (newValue: T) => void;
 }
+
+export interface WritableSignal<T> extends ISignal<T> {
+  set: (newValue: T) => void;
+}
+
 
 export function signal<T>(initialValue: T): ISignal<T> {
   const instance = new Signal<T>(initialValue);
