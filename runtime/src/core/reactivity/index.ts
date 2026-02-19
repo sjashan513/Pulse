@@ -1,3 +1,3 @@
 export * from "./api";
-export * from "./internals/parser";
+export * from "../../../../compiler/src/parser/parser";
 export * from "./internals/signalGraph";

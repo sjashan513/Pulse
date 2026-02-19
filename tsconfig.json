@@ -38,7 +38,7 @@
     "runtime/src/**/*.ts",
     "runtime/src/**/*.tsx",
     "test/**/*.ts"
-  ],
+, "compiler/src/parser/parser.ts"  ],
   "exclude": [
     "node_modules",
     "dist"
