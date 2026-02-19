@@ -2,7 +2,7 @@ import { Signal } from "./signal";
 import { ComputedSignal } from "./computed";
 import { Effect } from "./effect";
 import type { EffectFn } from "./internals/types";
-import { DeepSignal } from "./deepSignal";
+import { DeepSignal, DeepSignalOptions } from "./deepSignal";
 import { batcher } from "./internals/globalVariables";
 
 interface ISignal<T> {
@@ -49,8 +49,8 @@ export function effect(fn: EffectFn): () => void {
   return () => instance.dispose();
 }
 
-export function deepSignal<T extends object>(initialValue: T): IDeepSignal<T> {
-  const instance = new DeepSignal<T>(initialValue);
+export function deepSignal<T extends object>(initialValue: T, options?: DeepSignalOptions): IDeepSignal<T> {
+  const instance = new DeepSignal<T>(initialValue, options);
   const deepSignal = ((...args: any[]): T | void => {
     if (args.length === 0) {
       return instance.value;
@@ -61,5 +61,4 @@ export function deepSignal<T extends object>(initialValue: T): IDeepSignal<T> {
   deepSignal.set = (newValue: T) => instance.newValue = newValue;
   return deepSignal;
 }
-
 export const batch = batcher.batch.bind(batcher);
