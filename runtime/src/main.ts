@@ -1,11 +1,8 @@
-import {tokenize, runTests} from "../../compiler/src/lexer/index";
+import { Lexer } from '../../compiler/src/lexer/lexer'
 
 
-// const source = "<p>Count: {{ count() }} :)</p>";
-// // const source = "<div class= 'main' @click='doSomething'>";
+const rawhtml = '<button @click="increment">{{ count() }}</button>';
 
-// const result = tokenize(source);
-// console.log(result);
-// // console.log(JSON.stringify(result, null, 2));
-    
-runTests();
+const lexer = new Lexer(rawhtml);
+const tokens = lexer.tokenize();
+console.log(tokens);
