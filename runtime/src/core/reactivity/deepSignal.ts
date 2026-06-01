@@ -1,105 +1,149 @@
-import { Reactive, SignalObserver } from "./internals/types";
+import { Reactive, SignalObserver, amortizedCleanup } from "./internals/types";
 import { batcher, globalObserversStack } from "./internals/globalVariables";
 
+/**
+ * Opciones de inicialización y parametrización para un DeepSignal.
+ */
 export interface DeepSignalOptions {
+  /**
+   * Determina si la granularidad del rastreo es a nivel de propiedad individual.
+   * Si es `true`, las lecturas y mutaciones solo disparan observadores vinculados a la propiedad afectada.
+   * Si es `false`, cualquier cambio en cualquier propiedad invalida todo el objeto de forma global.
+   */
   granular?: boolean;
 }
 
+/**
+ * Primitiva de reactividad estructural para objetos complejos y arrays anidados utilizando Proxies de JS.
+ * Intercepta síncronamente operaciones de lectura (`get`) y escritura (`set`) para enlazar dependencias en el DAG.
+ * * @template T Tipo del objeto o array encapsulado. Must be extends object.
+ */
 export class DeepSignal<T extends object> implements Reactive<T> {
   private _value: T;
 
-  // Modo Estándar: Un set para todo el objeto
-  private _observers: Set<WeakRef<SignalObserver>> = new Set();
+  /** Mapa de observadores suscritos a cambios estructurales globales del objeto completo. */
+  private _observers: Map<number, WeakRef<SignalObserver>> = new Map();
 
-  // Modo Granular: Un mapa de Propiedad -> Set de Observadores
-  private _propertyObservers: Map<PropertyKey, Set<WeakRef<SignalObserver>>> = new Map();
+  /** Mapa asociativo que asigna a cada propiedad interceptada un sub-mapa indexado de sus observadores directos. */
+  private _propertyObservers: Map<PropertyKey, Map<number, WeakRef<SignalObserver>>> = new Map();
 
   private _isGranular: boolean;
-  public readonly level: number = 0; // Signals base son nivel 0
 
-  // Maps raw objects -> proxies
+  /** Las señales reactivas base, incluidas las de estructura profunda, actúan como hojas de nivel 0. */
+  public readonly level: number = 0;
+
+  /** Cache de Proxies generados para prevenir duplicación y asegurar la identidad física de los objetos devueltos. */
   private _proxyCache = new WeakMap<object, object>();
-  // Maps proxies -> raw objects
+
+  /** Mapeo invertido de Proxy a objeto sin envolver para desreferenciar operaciones y comparaciones de igualdad. */
   private _rawMap = new WeakMap<object, object>();
 
+  /**
+   * Instancia una señal reactiva profunda configurando su granularidad e interceptores Proxies.
+   * * @param initialValue El objeto raíz inicial.
+   * @param options Configuración del comportamiento granular del proxy.
+   */
   constructor(initialValue: T, options?: DeepSignalOptions) {
     this._isGranular = options?.granular ?? false;
     this._value = this.createDeepProxy(initialValue);
   }
 
+  /**
+   * Accede al valor o proxy del objeto raíz, registrando dependencias globales.
+   * * @returns El Proxy interceptor asociado al objeto raíz.
+   * @complexity $O(1)$
+   */
   get value(): T {
-    // Si alguien accede a la señal "entera" (ej: console.log(state())), 
-    // siempre suscribimos al observador global, sea granular o no.
     const currentObserver = globalObserversStack.peek();
     if (currentObserver) {
       currentObserver.trackDependency(this);
-      // NOTA: En modo granular, acceder al objeto raíz sigue siendo una dependencia "global"
-      // sobre la referencia del objeto.
     }
     return this._value;
   }
 
+  /**
+   * Reemplaza el objeto raíz completo por una nueva estructura.
+   * Si el objeto difiere estructuralmente del actual, genera un nuevo proxy de control
+   * y desencadena una notificación síncrona general en cascada a todos los observadores registrados.
+   * * @param newValue El nuevo objeto estructural a mapear.
+   * @complexity $O(1)$ para la envoltura; $O(U)$ al notificar dependencias donde $U$ es el volumen de observadores totales.
+   */
   set newValue(newValue: T) {
     if (newValue !== this.unwrapIfProxy(this._value)) {
       this._value = this.createDeepProxy(newValue);
-      // Si cambia la raíz, notificamos a TODO EL MUNDO (propiedades y global)
       this.notifyAll();
     }
   }
 
-  // Método requerido por la interfaz Reactive, usado para suscripciones globales
+  /**
+   * Vincula un observador al contexto de cambios estructurales globales de esta primitiva profunda.
+   * * @param observer El nodo consumidor a registrar.
+   * @complexity $O(1)$
+   */
   subscribe(observer: SignalObserver): void {
-    this._observers.add(new WeakRef(observer));
+    this._observers.set(observer.id, new WeakRef(observer));
   }
 
+  /**
+   * Desvincula síncronamente un observador.
+   * Realiza la baja instantánea de la raíz y recorre los mapas de propiedades granularmente
+   * para desvincular al observador en tiempo constante de desvinculación de propiedades.
+   * * @param observer El nodo consumidor a desvincular.
+   * @complexity $O(P)$ donde $P$ es el número de propiedades dinámicas rastreadas por la primitiva.
+   */
   unsubscribe(observer: SignalObserver): void {
-    // Limpieza global
-    this.removeObserverFromSet(this._observers, observer);
+    // 1. Limpieza raíz instantánea en O(1)
+    this._observers.delete(observer.id);
 
-    // Limpieza granular (si existe)
+    // 2. Limpieza granular en O(1) por mapa de propiedad trackeada
     if (this._isGranular) {
-      for (const set of this._propertyObservers.values()) {
-        this.removeObserverFromSet(set, observer);
+      for (const map of this._propertyObservers.values()) {
+        map.delete(observer.id);
       }
     }
   }
 
-  // Notifica a los observadores globales (usado cuando cambia la estructura o en modo no-granular)
+  /**
+   * Notifica de cambios estructurales o generales únicamente a los suscriptores de la raíz.
+   */
   public notify() {
     this.notifySet(this._observers);
   }
 
-  // Notifica absolutamente a todos (Root + Propiedades)
+  /**
+   * Difunde notificaciones a todos los observadores de la primitiva (Raíz y propiedades granulares).
+   */
   private notifyAll() {
-    this.notify(); // Globales
+    this.notify();
     if (this._isGranular) {
-      for (const set of this._propertyObservers.values()) {
-        this.notifySet(set);
+      for (const map of this._propertyObservers.values()) {
+        this.notifySet(map);
       }
     }
   }
 
-  private notifySet(set: Set<WeakRef<SignalObserver>>) {
-    const observersToNotify = Array.from(set);
-    observersToNotify.forEach((ref) => {
+  /**
+   * Notifica síncronamente y agenda a los observadores asociados a un sub-mapa indexado.
+   * Ejecuta purgas amortizadas antes del recorrido de mensajería.
+   * * @param map El mapa indexado de observadores por ID.
+   */
+  private notifySet(map: Map<number, WeakRef<SignalObserver>>) {
+    amortizedCleanup(map);
+
+    for (const [id, ref] of map.entries()) {
       const observer = ref.deref();
       if (observer) {
         batcher.scheduleObserver(observer);
       } else {
-        set.delete(ref);
-      }
-    });
-  }
-
-  private removeObserverFromSet(set: Set<WeakRef<SignalObserver>>, observer: SignalObserver) {
-    for (const ref of set) {
-      if (ref.deref() === observer) {
-        set.delete(ref);
-        break;
+        map.delete(id);
       }
     }
   }
 
+  /**
+   * Genera de manera recursiva e intercepta operaciones en un sub-objeto mediante Proxies.
+   * Controla el rastreo de dependencias finas en lecturas y mutaciones.
+   */
   private createDeepProxy<U extends object>(target: U): U {
     if (this._proxyCache.has(target)) {
       return this._proxyCache.get(target) as U;
@@ -111,19 +155,11 @@ export class DeepSignal<T extends object> implements Reactive<T> {
         const currentObserver = globalObserversStack.peek();
 
         if (currentObserver) {
-          // 1. REGISTRO DE DEPENDENCIAS
-          // Siempre avisamos al observador que depende de ESTE nodo reactivo (DeepSignal)
-          // para que pueda calcular su 'level' y gestionar su ciclo de vida.
+          // Registro básico en el observador para calcular jerarquía topológica
           currentObserver.trackDependency(this);
 
-          // 2. SUSCRIPCIÓN FINA (Si es Granular)
           if (this._isGranular) {
             this.trackPropertyDependency(property, currentObserver);
-          } else {
-            // Si no es granular, se suscribe al conjunto global a través de 'subscribe' 
-            // que llama trackDependency automáticamente al invocarlo arriba, 
-            // pero aseguramos la suscripción interna aquí si fuera necesario.
-            // (Nota: trackDependency llama a this.subscribe, así que ya está cubierto).
           }
         }
 
@@ -144,17 +180,13 @@ export class DeepSignal<T extends object> implements Reactive<T> {
         const unwrappedNew = this.unwrapIfProxy(newVal);
 
         if (success && unwrappedOld !== unwrappedNew) {
-          // 3. NOTIFICACIÓN
           if (this._isGranular) {
-            // A. Notificar a quienes escuchan ESTA propiedad específica
             const propObservers = this._propertyObservers.get(property);
             if (propObservers) {
               this.notifySet(propObservers);
             }
-            // B. Notificar a quienes escuchan el objeto entero (siempre necesario)
             this.notify();
           } else {
-            // Modo Simple: Notificar a todos
             this.notify();
           }
         }
@@ -168,26 +200,28 @@ export class DeepSignal<T extends object> implements Reactive<T> {
     return proxy;
   }
 
+  /**
+   * Enlaza síncronamente un observador con una clave/propiedad específica del objeto.
+   * * @remarks
+   * Al mapear directamente la identidad del observador mediante `map.set(observer.id, ...)`,
+   * se anula por completo la necesidad de realizar recorridos lineales costosos de desduplicación,
+   * reduciendo el coste de enlazado de propiedades a tiempo constante $O(1)$.
+   * * @param property La propiedad o clave léxica del objeto que está siendo observada.
+   * @param observer El consumidor reactivo interesado en la clave.
+   * @complexity $O(1)$
+   */
   private trackPropertyDependency(property: PropertyKey, observer: SignalObserver) {
-    let set = this._propertyObservers.get(property);
-    if (!set) {
-      set = new Set();
-      this._propertyObservers.set(property, set);
+    let map = this._propertyObservers.get(property);
+    if (!map) {
+      map = new Map();
+      this._propertyObservers.set(property, map);
     }
-    // Evitar duplicados (aunque WeakRef lo hace difícil de comprobar por igualdad estricta de ref,
-    // iteramos para ver si el objeto subyacente ya está).
-    let exists = false;
-    for (const ref of set) {
-      if (ref.deref() === observer) {
-        exists = true;
-        break;
-      }
-    }
-    if (!exists) {
-      set.add(new WeakRef(observer));
-    }
+    map.set(observer.id, new WeakRef(observer));
   }
 
+  /**
+   * Devuelve la referencia del objeto JS nativo subyacente si el valor provisto es un proxy controlado.
+   */
   private unwrapIfProxy(value: unknown): unknown {
     if (this._rawMap.has(value as object)) {
       return this._rawMap.get(value as object);
