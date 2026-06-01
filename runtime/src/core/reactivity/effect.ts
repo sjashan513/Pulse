@@ -1,6 +1,6 @@
+// syntra/packages/core/src/reactivity/effect.ts
 import { batcher, globalContextStack, globalObserversStack } from "./internals/globalVariables";
 import { EffectFn, Reactive, SignalObserver } from "./internals/types";
-
 
 export class Effect implements SignalObserver {
     public level: number = 0;
@@ -20,15 +20,29 @@ export class Effect implements SignalObserver {
         if (this._disposed) return;
         this._cleanup();
         globalObserversStack.push(this);
-        this._fn();
-        globalObserversStack.pop();
-        this._recalculateLevel();
+        try {
+            this._fn();
+        } finally {
+            globalObserversStack.pop();
+        }
     }
 
     trackDependency(dep: Reactive<unknown>): void {
+        if (this._dependencies.has(dep)) return;
         this._dependencies.add(dep);
         dep.subscribe(this);
+
+        if (dep.level >= this.level) {
+            const oldLevel = this.level;
+            this.level = dep.level + 1;
+
+            // updateNodeLevel transfiere el nodo al nuevo cubo de forma segura
+            if (batcher && typeof batcher.updateNodeLevel === 'function') {
+                batcher.updateNodeLevel(this, oldLevel, this.level);
+            }
+        }
     }
+
     notify(): void {
         batcher.scheduleObserver(this);
     }
@@ -38,22 +52,21 @@ export class Effect implements SignalObserver {
         this._cleanup();
     }
 
-    private _cleanup() {
-        this._dependencies.forEach(signal => signal.unsubscribe(this));
+    // Método para propagación recursiva topológica
+    public updateLevel(newLevel: number): void {
+        if (newLevel > this.level) {
+            const oldLevel = this.level;
+            this.level = newLevel;
+
+            if (batcher && typeof batcher.updateNodeLevel === 'function') {
+                batcher.updateNodeLevel(this, oldLevel, this.level);
+            }
+        }
     }
 
-    private _recalculateLevel() {
-        if (this._dependencies.size === 0) {
-            this.level = 1;
-            return;
-        }
-        let maxLevel = 0;
-        this._dependencies.forEach(dep => {
-            if (dep.level > maxLevel) {
-                maxLevel = dep.level;
-            }
-        });
-        this.level = maxLevel + 1;
-
+    private _cleanup() {
+        this._dependencies.forEach(signal => signal.unsubscribe(this));
+        this._dependencies.clear();
+        // this.level = 0; // Reset topológico en limpieza
     }
 }
