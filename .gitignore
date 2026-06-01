@@ -2,3 +2,5 @@ node_modules
 dist/
 .vscode/
 .env
+pulse.md
+monorepo.md
